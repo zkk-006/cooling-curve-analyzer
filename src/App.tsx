@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react"
+import MassCalculator from "@/components/MassCalculator"
 import StepOne from "@/components/StepOne"
 import StepTwo from "@/components/StepTwo"
 import CurveChart from "@/components/CurveChart"
@@ -211,6 +212,12 @@ export default function App() {
           <p className="mb-6 text-sm text-slate-500 sm:mb-8">
             输入实验数据，自动拟合曲线并 AI 智能诊断
           </p>
+
+          {/* Mass calculator */}
+          <div className="w-full max-w-2xl mb-6">
+            <MassCalculator />
+          </div>
+
           <div className="w-full max-w-md">
             <StepOne onConfirm={handleIntervalConfirm} />
           </div>
