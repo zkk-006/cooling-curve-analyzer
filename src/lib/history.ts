@@ -1,50 +1,91 @@
-import type { GroupData } from "./types"
+import { type GroupData } from "@/lib/types"
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface HistoryEntry {
   id: string
-  savedAt: number
   intervalSecs: number
   groupCount: number
   groups: GroupData[]
   analysisTexts: Record<number, string>
+  imageDataUrl?: string   // ← NEW: chart screenshot (base64)
+  savedAt: number
 }
 
-const KEY = "cca_history"
-const MAX = 3
+// ── Storage key ───────────────────────────────────────────────────────────────
 
-export function loadHistory(): HistoryEntry[] {
+const STORAGE_KEY = "cooling_curve_history"
+const MAX_ENTRIES = 20
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function readAll(): HistoryEntry[] {
   try {
-    const raw = localStorage.getItem(KEY)
-    return raw ? (JSON.parse(raw) as HistoryEntry[]) : []
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    return JSON.parse(raw) as HistoryEntry[]
   } catch {
     return []
   }
 }
 
-export function saveToHistory(entry: Omit<HistoryEntry, "id" | "savedAt">): string {
-  const id = crypto.randomUUID()
+function writeAll(entries: HistoryEntry[]) {
   try {
-    const existing = loadHistory()
-    const newEntry: HistoryEntry = { ...entry, id, savedAt: Date.now() }
-    localStorage.setItem(KEY, JSON.stringify([newEntry, ...existing].slice(0, MAX)))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
   } catch {
-    // quota exceeded or unavailable
+    // Storage full — drop oldest entry and retry
+    const trimmed = entries.slice(1)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
+    } catch {
+      // ignore
+    }
   }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export function loadHistory(): HistoryEntry[] {
+  return readAll().slice(0, MAX_ENTRIES)
+}
+
+export function saveToHistory(data: {
+  intervalSecs: number
+  groupCount: number
+  groups: GroupData[]
+  analysisTexts: Record<number, string>
+  imageDataUrl?: string
+}): string {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  const entry: HistoryEntry = {
+    id,
+    intervalSecs: data.intervalSecs,
+    groupCount: data.groupCount,
+    groups: data.groups,
+    analysisTexts: data.analysisTexts,
+    imageDataUrl: data.imageDataUrl,
+    savedAt: Date.now(),
+  }
+
+  const all = readAll()
+  // Prepend (newest first), cap at MAX_ENTRIES
+  writeAll([entry, ...all].slice(0, MAX_ENTRIES))
   return id
 }
 
-export function updateHistoryEntry(id: string, patch: Partial<HistoryEntry>): void {
-  try {
-    const entries = loadHistory().map((e) => (e.id === id ? { ...e, ...patch } : e))
-    localStorage.setItem(KEY, JSON.stringify(entries))
-  } catch {}
+export function updateHistoryEntry(
+  id: string,
+  patch: Partial<Pick<HistoryEntry, "analysisTexts" | "imageDataUrl">>
+) {
+  const all = readAll()
+  const idx = all.findIndex((e) => e.id === id)
+  if (idx === -1) return
+  all[idx] = { ...all[idx], ...patch }
+  writeAll(all)
 }
 
-export function deleteHistoryEntry(id: string): void {
-  try {
-    const entries = loadHistory().filter((e) => e.id !== id)
-    localStorage.setItem(KEY, JSON.stringify(entries))
-  } catch {}
+export function deleteHistoryEntry(id: string) {
+  writeAll(readAll().filter((e) => e.id !== id))
 }
 
 export function formatRelativeTime(ts: number): string {
@@ -55,7 +96,5 @@ export function formatRelativeTime(ts: number): string {
   const hours = Math.floor(mins / 60)
   if (hours < 24) return `${hours} 小时前`
   const days = Math.floor(hours / 24)
-  if (days === 1) return "昨天"
-  if (days < 7) return `${days} 天前`
-  return new Date(ts).toLocaleDateString("zh-CN")
+  return `${days} 天前`
 }
