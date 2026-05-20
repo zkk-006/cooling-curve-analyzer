@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import StepOne from "@/components/StepOne"
 import StepTwo from "@/components/StepTwo"
 import CurveChart from "@/components/CurveChart"
@@ -23,6 +23,24 @@ import {
 
 type Step = "interval" | "input" | "result"
 
+// ── Capture chart as base64 image ─────────────────────────────────────────────
+
+async function captureChartImage(el: HTMLElement | null): Promise<string | undefined> {
+  if (!el) return undefined
+  try {
+    const html2canvas = (await import("html2canvas")).default
+    const canvas = await html2canvas(el, {
+      scale: 1,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+    })
+    return canvas.toDataURL("image/jpeg", 0.7)
+  } catch {
+    return undefined
+  }
+}
+
 export default function App() {
   const [step, setStep] = useState<Step>("interval")
   const [intervalSecs, setIntervalSecs] = useState(30)
@@ -36,18 +54,34 @@ export default function App() {
   const historyIdRef = useRef<string | null>(null)
   const isSampleRef = useRef(false)
 
-  const currentGroupIndex = groups.length // next group to enter (0-based)
+  const currentGroupIndex = groups.length
   const allDoneEarly = groups.length >= groupCount && groups.length > 0
 
-  // Auto-save to localStorage whenever the experiment is complete or AI texts arrive
-  useEffect(() => {
+  // ── Auto-save to localStorage with chart image ───────────────────────────────
+  const saveWithImage = useCallback(async () => {
     if (!allDoneEarly || step !== "result" || isSampleRef.current) return
+
+    // Wait a tick for chart to render before capturing
+    await new Promise((r) => setTimeout(r, 300))
+    const imageDataUrl = await captureChartImage(chartRef.current)
+
     if (!historyIdRef.current) {
-      historyIdRef.current = saveToHistory({ intervalSecs, groupCount, groups, analysisTexts })
+      historyIdRef.current = saveToHistory({
+        intervalSecs,
+        groupCount,
+        groups,
+        analysisTexts,
+        imageDataUrl,
+      })
     } else {
-      updateHistoryEntry(historyIdRef.current, { analysisTexts })
+      updateHistoryEntry(historyIdRef.current, { analysisTexts, imageDataUrl })
     }
     setHistory(loadHistory())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDoneEarly, step, analysisTexts, intervalSecs, groupCount, groups])
+
+  useEffect(() => {
+    saveWithImage()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allDoneEarly, step, analysisTexts])
 
@@ -103,16 +137,13 @@ export default function App() {
 
   function handleLoadSample() {
     const INTERVAL = 30
-    // Two sample groups: pure substance (sharp platform) vs mixture (broader eutectic plateau)
     const samples: Array<{ label: string; temps: number[] }> = [
       {
         label: "第 1 组",
-        // Naphthalene-like: cools, dips to ~77.5 (supercooling), rebounds to ~80 platform, then cools
         temps: [105, 101, 97, 93, 89, 85, 81, 77.5, 79.9, 80.4, 80.4, 80.3, 80.2, 80.0, 79.8, 78, 74, 70, 66, 62, 58, 54, 51, 48, 45],
       },
       {
         label: "第 2 组",
-        // Mixture: lower, flatter plateau around 71°C (eutectic-like), no supercooling
         temps: [105, 100, 96, 92, 88, 84, 80, 76, 73, 71.3, 71.5, 71.5, 71.4, 71.3, 71.1, 70.9, 69, 66, 63, 60, 57, 54, 51, 48, 45],
       },
     ]
@@ -134,7 +165,7 @@ export default function App() {
     setAnalysisTexts({})
     setExpandedAnalysis(0)
     historyIdRef.current = null
-    isSampleRef.current = true  // don't save sample data to history
+    isSampleRef.current = true
     setStep("result")
   }
 
@@ -144,7 +175,7 @@ export default function App() {
     setGroups(entry.groups)
     setAnalysisTexts(entry.analysisTexts)
     setExpandedAnalysis(0)
-    historyIdRef.current = entry.id  // link to existing record so AI updates patch it
+    historyIdRef.current = entry.id
     isSampleRef.current = false
     setStep("result")
   }
@@ -200,10 +231,13 @@ export default function App() {
             <p className="text-xs text-slate-400">包含 2 组对照实验数据，已自动完成分析</p>
           </div>
 
+          {/* ── History section ──────────────────────────────────── */}
           {history.length > 0 && (
-            <div className="w-full max-w-md">
-              <p className="mb-2 text-xs font-medium text-slate-400">最近实验记录</p>
-              <div className="flex flex-col gap-2">
+            <div className="w-full max-w-2xl mt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                📋 历史实验记录
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {history.map((entry) => (
                   <HistoryCard
                     key={entry.id}
@@ -228,7 +262,7 @@ export default function App() {
           <div className="flex flex-1 items-center justify-center px-4 py-12">
             <div className="w-full max-w-2xl">
               <StepTwo
-                key={currentGroupIndex} // remount on each new group
+                key={currentGroupIndex}
                 interval={intervalSecs}
                 groupIndex={currentGroupIndex}
                 groupCount={groupCount}
@@ -367,7 +401,7 @@ function ProgressBar({
       ? ["设置参数", "输入数据", "查看结果"]
       : ["设置参数", ...Array.from({ length: groupCount }, (_, i) => `第 ${i + 1} 组数据`), "查看结果"]
 
-  const current = currentGroupIndex + 1 // step 0 = 设置参数 (done), step 1+ = groups
+  const current = currentGroupIndex + 1
 
   return (
     <div className="border-b border-slate-200 bg-white">
@@ -417,7 +451,7 @@ function ProgressBar({
   )
 }
 
-// ── History card ──────────────────────────────────────────────────────────────
+// ── History card ── with chart thumbnail ──────────────────────────────────────
 
 import { groupColor } from "@/lib/types"
 
@@ -438,50 +472,68 @@ function HistoryCard({
   const aiDone = Object.keys(entry.analysisTexts).length
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-slate-700">
-            {entry.groupCount} 组实验
-          </span>
-          <span className="text-xs text-slate-400">·</span>
-          <span className="text-xs text-slate-500">间隔 {intervalDisplay}</span>
-          {aiDone > 0 && (
-            <>
-              <span className="text-xs text-slate-400">·</span>
-              <span className="text-xs text-emerald-600">AI 分析已保存</span>
-            </>
-          )}
+    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+      {/* Chart thumbnail */}
+      {entry.imageDataUrl ? (
+        <div className="relative h-28 w-full overflow-hidden bg-slate-50">
+          <img
+            src={entry.imageDataUrl}
+            alt="实验曲线预览"
+            className="h-full w-full object-cover object-top"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-white/30 to-transparent" />
         </div>
-        <div className="mt-0.5 flex gap-1.5 flex-wrap">
-          {entry.groups.map((g, gi) => {
-            const temps = g.rawData.temperature
-            const lo = Math.min(...temps).toFixed(0)
-            const hi = Math.max(...temps).toFixed(0)
-            return (
-              <span key={gi} className="text-xs" style={{ color: groupColor(gi) }}>
-                {g.label} {hi}→{lo}°C
-              </span>
-            )
-          })}
+      ) : (
+        <div className="flex h-16 items-center justify-center bg-slate-50 text-slate-300 text-xs">
+          暂无图像预览
         </div>
-        <p className="mt-0.5 text-xs text-slate-400">{formatRelativeTime(entry.savedAt)}</p>
+      )}
+
+      {/* Info */}
+      <div className="flex items-start gap-2 px-3 py-2.5">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-slate-700">
+              {entry.groupCount} 组实验
+            </span>
+            <span className="text-xs text-slate-400">间隔 {intervalDisplay}</span>
+            {aiDone > 0 && (
+              <span className="text-xs text-emerald-600 font-medium">✓ AI已分析</span>
+            )}
+          </div>
+          <div className="mt-0.5 flex gap-1.5 flex-wrap">
+            {entry.groups.map((g, gi) => {
+              const temps = g.rawData.temperature
+              const lo = Math.min(...temps).toFixed(0)
+              const hi = Math.max(...temps).toFixed(0)
+              return (
+                <span key={gi} className="text-xs" style={{ color: groupColor(gi) }}>
+                  {g.label} {hi}→{lo}°C
+                </span>
+              )
+            })}
+          </div>
+          <p className="mt-0.5 text-xs text-slate-400">{formatRelativeTime(entry.savedAt)}</p>
+        </div>
+
+        <div className="flex flex-col gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => onRestore(entry)}
+            className="rounded-md border border-[#1e40af] px-2.5 py-1 text-xs font-medium text-[#1e40af] transition-colors hover:bg-blue-50"
+          >
+            恢复
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(entry.id)}
+            className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-red-200 hover:text-red-400"
+            aria-label="删除记录"
+          >
+            删除
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={() => onRestore(entry)}
-        className="shrink-0 rounded-md border border-[#1e40af] px-3 py-1 text-xs font-medium text-[#1e40af] transition-colors hover:bg-blue-50"
-      >
-        恢复
-      </button>
-      <button
-        type="button"
-        onClick={() => onDelete(entry.id)}
-        className="shrink-0 text-slate-300 transition-colors hover:text-red-400"
-        aria-label="删除记录"
-      >
-        ×
-      </button>
     </div>
   )
 }
