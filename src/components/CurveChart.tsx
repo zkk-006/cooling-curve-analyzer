@@ -2,7 +2,6 @@ import { useMemo } from "react"
 import {
   ComposedChart,
   Line,
-  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -61,6 +60,7 @@ function buildMergedData(
     groups.forEach((g, gi) => {
       const idx = g.rawData.time.indexOf(t)
       row[`s${gi}`] = idx >= 0 ? (g.smoothed[idx] ?? null) : null
+      row[`r${gi}`] = idx >= 0 ? (g.rawData.temperature[idx] ?? null) : null
     })
     extrapolations.forEach((ext, gi) => {
       const point = ext.find((p) => p.time === t)
@@ -188,7 +188,7 @@ export default function CurveChart({ groups }: CurveChartProps) {
         </span>
       </div>
 
-      {/* Chart — padding-bottom 正方形技巧，兼容 ResponsiveContainer */}
+      {/* Chart */}
       <div
         style={{
           position: "relative",
@@ -328,61 +328,24 @@ export default function CurveChart({ groups }: CurveChartProps) {
                 ))
               )}
 
-              {/* 原始散点 */}
+              {/* 原始数据点：用 Line + dot 替代 Scatter，避免 removeChild 崩溃 */}
               {groups.map((g, gi) => (
-                <Scatter
-                  key={`scatter-${gi}`}
-                  data={g.rawData.time.map((t, i) => ({
-                    x: t,
-                    y: g.rawData.temperature[i],
-                  }))}
-                  fill={groupColor(gi) + "50"}
-                  line={false}
-                  name={`${g.label} 原始`}
+                <Line
+                  key={`raw-${gi}`}
+                  dataKey={`r${gi}`}
+                  stroke="none"
+                  dot={{
+                    r: 3,
+                    fill: groupColor(gi) + "80",
+                    stroke: groupColor(gi),
+                    strokeWidth: 1,
+                  }}
+                  activeDot={false}
+                  legendType="none"
+                  connectNulls={false}
+                  isAnimationActive={false}
                 />
               ))}
-
-              {/* 异常点 */}
-              {groups.flatMap((g, gi) =>
-                g.anomalies.length > 0 ? (
-                  <Scatter
-                    key={`anomaly-${gi}`}
-                    data={g.anomalies.map((a) => ({
-                      x: a.time,
-                      y: a.temperature,
-                    }))}
-                    fill="hsl(25 95% 53%)"
-                    line={false}
-                    name={`${g.label} 异常`}
-                    shape={(props: { cx: number; cy: number }) => {
-                      const { cx, cy } = props
-                      return (
-                        <g>
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={7}
-                            fill="hsl(25 95% 53% / 0.2)"
-                            stroke="hsl(25 95% 53%)"
-                            strokeWidth={2}
-                          />
-                          <text
-                            x={cx}
-                            y={cy + 1}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            fontSize={9}
-                            fontWeight="bold"
-                            fill="hsl(25 95% 40%)"
-                          >
-                            !
-                          </text>
-                        </g>
-                      )
-                    }}
-                  />
-                ) : []
-              )}
 
               {/* 平滑曲线 */}
               {groups.map((g, gi) => (
@@ -394,6 +357,7 @@ export default function CurveChart({ groups }: CurveChartProps) {
                   dot={false}
                   name={g.label}
                   connectNulls={false}
+                  isAnimationActive={false}
                   activeDot={{
                     r: 6,
                     stroke: "white",
@@ -414,6 +378,7 @@ export default function CurveChart({ groups }: CurveChartProps) {
                   dot={false}
                   legendType="none"
                   connectNulls={false}
+                  isAnimationActive={false}
                   opacity={0.55}
                   activeDot={{
                     r: 4,
