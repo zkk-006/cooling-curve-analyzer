@@ -19,8 +19,6 @@ interface CurveChartProps {
   groups: GroupData[]
 }
 
-// ── Extrapolation: extend curve beyond last data point ────────────────────────
-
 function buildExtrapolation(groups: GroupData[]) {
   return groups.map((g) => {
     const { time, temperature } = g.rawData
@@ -28,10 +26,8 @@ function buildExtrapolation(groups: GroupData[]) {
 
     const maxTime = time[time.length - 1]
     const timeRange = maxTime - time[0]
-    // Extend by 35% of the existing time range
     const extraDuration = timeRange * 0.35
 
-    // Use last 5 points for linear regression (cooling trend at end)
     const n = Math.min(5, time.length)
     const xs = time.slice(-n)
     const ys = temperature.slice(-n)
@@ -45,7 +41,6 @@ function buildExtrapolation(groups: GroupData[]) {
     const step =
       time.length > 1 ? time[time.length - 1] - time[time.length - 2] : 30
 
-    // Start from last real smoothed value for seamless connection
     const lastSmoothed = g.smoothed[g.smoothed.length - 1] ?? ys[ys.length - 1]
     const pts: { time: number; temp: number }[] = [
       { time: maxTime, temp: lastSmoothed },
@@ -56,8 +51,6 @@ function buildExtrapolation(groups: GroupData[]) {
     return pts
   })
 }
-
-// ── Merged dataset for shared XAxis ──────────────────────────────────────────
 
 function buildMergedData(
   groups: GroupData[],
@@ -81,8 +74,6 @@ function buildMergedData(
     return row
   })
 }
-
-// ── Custom Tooltip ────────────────────────────────────────────────────────────
 
 function CustomTooltip({
   active,
@@ -124,8 +115,6 @@ function CustomTooltip({
   )
 }
 
-// ── Badge ─────────────────────────────────────────────────────────────────────
-
 function Badge({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
     <span
@@ -141,8 +130,6 @@ function Badge({ children, color }: { children: React.ReactNode; color?: string 
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
-
 export default function CurveChart({ groups }: CurveChartProps) {
   const extrapolations = useMemo(() => buildExtrapolation(groups), [groups])
   const mergedData = useMemo(
@@ -154,23 +141,33 @@ export default function CurveChart({ groups }: CurveChartProps) {
   const yMin = allTemps.length ? Math.min(...allTemps) - 5 : 0
   const yMax = allTemps.length ? Math.max(...allTemps) + 5 : 100
 
-  // Extend x-axis to show extrapolated region
   const allTimes = groups.flatMap((g) => g.rawData.time)
   const maxDataTime = allTimes.length ? Math.max(...allTimes) : 0
-  const timeRange = allTimes.length
-    ? maxDataTime - Math.min(...allTimes)
-    : 0
+  const timeRange = allTimes.length ? maxDataTime - Math.min(...allTimes) : 0
   const xMax = maxDataTime + timeRange * 0.35
+  const xMin = allTimes.length ? Math.min(...allTimes) : 0
 
   const multiGroup = groups.length > 1
 
-  // Tooltip content as closure to capture groups
   const tooltipContent = useMemo(
     () =>
       (props: Parameters<typeof CustomTooltip>[0]) =>
         <CustomTooltip {...props} groups={groups} />,
     [groups]
   )
+
+  const originAxisStyle = {
+    fontFamily: "Times New Roman, serif",
+    fontSize: 13,
+    fill: "#000000",
+  }
+
+  const originLabelStyle = {
+    fontFamily: "Times New Roman, serif",
+    fontSize: 14,
+    fontWeight: "bold" as const,
+    fill: "#000000",
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,201 +200,233 @@ export default function CurveChart({ groups }: CurveChartProps) {
         </span>
       </div>
 
-      {/* Chart */}
-      <div className="h-[260px] sm:h-[360px] lg:h-[420px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={mergedData}
-            margin={{ top: 12, right: 12, left: 0, bottom: 32 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+      {/* Chart — Origin 科学绘图风格，正方形 */}
+      <div className="w-full max-w-[540px] mx-auto">
+        <div
+          className="aspect-square w-full bg-white"
+          style={{ border: "2px solid #000000" }}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart
+              data={mergedData}
+              margin={{ top: 20, right: 30, left: 10, bottom: 52 }}
+            >
+              {/* 网格线：浅灰虚线 */}
+              <CartesianGrid strokeDasharray="3 3" stroke="#cccccc" />
 
-            <XAxis
-              dataKey="time"
-              type="number"
-              domain={["dataMin", xMax]}
-              label={{ value: "时间 (s)", position: "insideBottom", offset: -24 }}
-              tick={{ fontSize: 12 }}
-            />
-
-            <YAxis
-              domain={[yMin, yMax]}
-              label={{
-                value: "温度 (°C)",
-                angle: -90,
-                position: "insideLeft",
-                offset: 14,
-              }}
-              tick={{ fontSize: 11 }}
-              width={52}
-            />
-
-            <Tooltip content={tooltipContent} />
-
-            {multiGroup && (
-              <Legend
-                verticalAlign="top"
-                formatter={(value) => value}
-                wrapperStyle={{ paddingBottom: 8 }}
+              {/* X 轴 */}
+              <XAxis
+                dataKey="time"
+                type="number"
+                domain={[xMin, xMax]}
+                label={{
+                  value: "时间 (s)",
+                  position: "insideBottom",
+                  offset: -36,
+                  style: originLabelStyle,
+                }}
+                tick={originAxisStyle}
+                axisLine={{ stroke: "#000000", strokeWidth: 2 }}
+                tickLine={{ stroke: "#000000", strokeWidth: 1.5 }}
               />
-            )}
 
-            {/* Platform highlight areas — per group */}
-            {groups.flatMap((g, gi) =>
-              g.platforms.map((p, pi) => (
-                <ReferenceArea
-                  key={`area-${gi}-${pi}`}
-                  x1={p.startTime}
-                  x2={p.endTime}
-                  fill={groupColor(gi) + "22"}
-                  stroke={groupColor(gi) + "60"}
-                  strokeWidth={1}
-                />
-              ))
-            )}
-
-            {/* Platform labels — per group */}
-            {groups.flatMap((g, gi) =>
-              g.platforms.map((p, pi) => (
-                <ReferenceLine
-                  key={`plabel-${gi}-${pi}`}
-                  x={Math.round((p.startTime + p.endTime) / 2)}
-                  stroke="transparent"
-                  label={{
-                    value: `${multiGroup ? g.label + " · " : ""}平台 ${pi + 1} · ${p.fittedTemp.toFixed(1)}°C`,
-                    position: "top",
-                    fontSize: 10,
-                    fill: groupColor(gi),
-                    fontWeight: 600,
-                  }}
-                />
-              ))
-            )}
-
-            {/* Supercooling markers — per group */}
-            {groups.flatMap((g, gi) =>
-              g.supercooling.map((s, si) => (
-                <ReferenceLine
-                  key={`sc-${gi}-${si}`}
-                  x={s.minTime}
-                  stroke={groupColor(gi) + "80"}
-                  strokeDasharray="4 3"
-                  strokeWidth={1}
-                  label={{
-                    value: `过冷 ${s.degree.toFixed(1)}°C`,
-                    position: "insideBottomRight",
-                    fontSize: 9,
-                    fill: groupColor(gi),
-                  }}
-                />
-              ))
-            )}
-
-            {/* Raw data scatter — per group */}
-            {groups.map((g, gi) => (
-              <Scatter
-                key={`scatter-${gi}`}
-                data={g.rawData.time.map((t, i) => ({
-                  x: t,
-                  y: g.rawData.temperature[i],
-                }))}
-                fill={groupColor(gi) + "40"}
-                line={false}
-                name={`${g.label} 原始`}
+              {/* Y 轴 */}
+              <YAxis
+                domain={[yMin, yMax]}
+                label={{
+                  value: "温度 (°C)",
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: 22,
+                  style: originLabelStyle,
+                }}
+                tick={originAxisStyle}
+                axisLine={{ stroke: "#000000", strokeWidth: 2 }}
+                tickLine={{ stroke: "#000000", strokeWidth: 1.5 }}
+                width={62}
               />
-            ))}
 
-            {/* Anomaly markers — per group */}
-            {groups.flatMap((g, gi) =>
-              g.anomalies.length > 0 ? (
-                <Scatter
-                  key={`anomaly-${gi}`}
-                  data={g.anomalies.map((a) => ({ x: a.time, y: a.temperature }))}
-                  fill="hsl(25 95% 53%)"
-                  line={false}
-                  name={`${g.label} 异常`}
-                  shape={(props: { cx: number; cy: number }) => {
-                    const { cx, cy } = props
-                    return (
-                      <g>
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={7}
-                          fill="hsl(25 95% 53% / 0.2)"
-                          stroke="hsl(25 95% 53%)"
-                          strokeWidth={2}
-                        />
-                        <text
-                          x={cx}
-                          y={cy + 1}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fontSize={9}
-                          fontWeight="bold"
-                          fill="hsl(25 95% 40%)"
-                        >
-                          !
-                        </text>
-                      </g>
-                    )
-                  }}
+              <Tooltip content={tooltipContent} />
+
+              {multiGroup && (
+                <Legend
+                  verticalAlign="top"
+                  formatter={(value) => value}
+                  wrapperStyle={{ paddingBottom: 8, fontFamily: "Times New Roman, serif" }}
                 />
-              ) : []
-            )}
+              )}
 
-            {/* Smoothed lines — one per group */}
-            {groups.map((g, gi) => (
-              <Line
-                key={`line-${gi}`}
-                dataKey={`s${gi}`}
-                stroke={groupColor(gi)}
+              {/* 平台高亮区域 */}
+              {groups.flatMap((g, gi) =>
+                g.platforms.map((p, pi) => (
+                  <ReferenceArea
+                    key={`area-${gi}-${pi}`}
+                    x1={p.startTime}
+                    x2={p.endTime}
+                    fill={groupColor(gi) + "22"}
+                    stroke={groupColor(gi) + "60"}
+                    strokeWidth={1}
+                  />
+                ))
+              )}
+
+              {/* 平台标签 */}
+              {groups.flatMap((g, gi) =>
+                g.platforms.map((p, pi) => (
+                  <ReferenceLine
+                    key={`plabel-${gi}-${pi}`}
+                    x={Math.round((p.startTime + p.endTime) / 2)}
+                    stroke="transparent"
+                    label={{
+                      value: `${multiGroup ? g.label + " · " : ""}平台 ${pi + 1} · ${p.fittedTemp.toFixed(1)}°C`,
+                      position: "top",
+                      fontSize: 10,
+                      fill: groupColor(gi),
+                      fontWeight: 600,
+                    }}
+                  />
+                ))
+              )}
+
+              {/* 过冷标记 */}
+              {groups.flatMap((g, gi) =>
+                g.supercooling.map((s, si) => (
+                  <ReferenceLine
+                    key={`sc-${gi}-${si}`}
+                    x={s.minTime}
+                    stroke={groupColor(gi) + "80"}
+                    strokeDasharray="4 3"
+                    strokeWidth={1}
+                    label={{
+                      value: `过冷 ${s.degree.toFixed(1)}°C`,
+                      position: "insideBottomRight",
+                      fontSize: 9,
+                      fill: groupColor(gi),
+                    }}
+                  />
+                ))
+              )}
+
+              {/* Origin 封闭边框：顶边和右边 */}
+              <ReferenceLine
+                y={yMax}
+                stroke="#000000"
                 strokeWidth={2}
-                dot={false}
-                name={g.label}
-                connectNulls={false}
-                activeDot={{
-                  r: 6,
-                  stroke: "white",
-                  strokeWidth: 2,
-                  fill: groupColor(gi),
-                }}
+                ifOverflow="visible"
               />
-            ))}
-
-            {/* ── Trend extension dashed lines — per group ── */}
-            {groups.map((_, gi) => (
-              <Line
-                key={`ext-${gi}`}
-                dataKey={`ext${gi}`}
-                stroke={groupColor(gi)}
-                strokeWidth={1.5}
-                strokeDasharray="7 4"
-                dot={false}
-                legendType="none"
-                connectNulls={false}
-                opacity={0.55}
-                activeDot={{
-                  r: 4,
-                  stroke: "white",
-                  strokeWidth: 1,
-                  fill: groupColor(gi),
-                }}
+              <ReferenceLine
+                x={xMax}
+                stroke="#000000"
+                strokeWidth={2}
+                ifOverflow="visible"
               />
-            ))}
 
-            <Brush
-              dataKey="time"
-              height={24}
-              stroke="hsl(var(--border))"
-              fill="hsl(var(--muted))"
-              travellerWidth={6}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+              {/* 原始数据散点 */}
+              {groups.map((g, gi) => (
+                <Scatter
+                  key={`scatter-${gi}`}
+                  data={g.rawData.time.map((t, i) => ({
+                    x: t,
+                    y: g.rawData.temperature[i],
+                  }))}
+                  fill={groupColor(gi) + "50"}
+                  line={false}
+                  name={`${g.label} 原始`}
+                />
+              ))}
+
+              {/* 异常点标记 */}
+              {groups.flatMap((g, gi) =>
+                g.anomalies.length > 0 ? (
+                  <Scatter
+                    key={`anomaly-${gi}`}
+                    data={g.anomalies.map((a) => ({ x: a.time, y: a.temperature }))}
+                    fill="hsl(25 95% 53%)"
+                    line={false}
+                    name={`${g.label} 异常`}
+                    shape={(props: { cx: number; cy: number }) => {
+                      const { cx, cy } = props
+                      return (
+                        <g>
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={7}
+                            fill="hsl(25 95% 53% / 0.2)"
+                            stroke="hsl(25 95% 53%)"
+                            strokeWidth={2}
+                          />
+                          <text
+                            x={cx}
+                            y={cy + 1}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize={9}
+                            fontWeight="bold"
+                            fill="hsl(25 95% 40%)"
+                          >
+                            !
+                          </text>
+                        </g>
+                      )
+                    }}
+                  />
+                ) : []
+              )}
+
+              {/* 平滑曲线 */}
+              {groups.map((g, gi) => (
+                <Line
+                  key={`line-${gi}`}
+                  dataKey={`s${gi}`}
+                  stroke={groupColor(gi)}
+                  strokeWidth={2}
+                  dot={false}
+                  name={g.label}
+                  connectNulls={false}
+                  activeDot={{
+                    r: 6,
+                    stroke: "white",
+                    strokeWidth: 2,
+                    fill: groupColor(gi),
+                  }}
+                />
+              ))}
+
+              {/* 趋势延伸虚线 */}
+              {groups.map((_, gi) => (
+                <Line
+                  key={`ext-${gi}`}
+                  dataKey={`ext${gi}`}
+                  stroke={groupColor(gi)}
+                  strokeWidth={1.5}
+                  strokeDasharray="7 4"
+                  dot={false}
+                  legendType="none"
+                  connectNulls={false}
+                  opacity={0.55}
+                  activeDot={{
+                    r: 4,
+                    stroke: "white",
+                    strokeWidth: 1,
+                    fill: groupColor(gi),
+                  }}
+                />
+              ))}
+
+              <Brush
+                dataKey="time"
+                height={24}
+                stroke="#000000"
+                fill="#f8fafc"
+                travellerWidth={6}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {/* Platform badges — per group */}
+      {/* 平台 Badge */}
       {groups.some((g) => g.platforms.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {groups.flatMap((g, gi) =>
@@ -412,7 +441,7 @@ export default function CurveChart({ groups }: CurveChartProps) {
         </div>
       )}
 
-      {/* Supercooling badges */}
+      {/* 过冷 Badge */}
       {groups.some((g) => g.supercooling.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {groups.flatMap((g, gi) =>
