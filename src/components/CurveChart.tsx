@@ -150,6 +150,11 @@ export default function CurveChart({ groups }: CurveChartProps) {
 
   const multiGroup = groups.length > 1
 
+  const chartKey = useMemo(
+    () => `chart-${groups.length}-${mergedData.length}`,
+    [groups.length, mergedData.length]
+  )
+
   const tooltipContent = useMemo(
     () =>
       (props: Parameters<typeof CustomTooltip>[0]) =>
@@ -191,26 +196,18 @@ export default function CurveChart({ groups }: CurveChartProps) {
       {/* Chart */}
       <div
         style={{
-          position: "relative",
           width: "100%",
           maxWidth: "540px",
+          height: "540px",
           margin: "0 auto",
           border: "2px solid #000000",
           backgroundColor: "#ffffff",
         }}
       >
-        <div style={{ paddingBottom: "100%" }} />
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-          }}
-        >
+        <div style={{ width: "100%", height: "100%" }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
+              key={chartKey}
               data={mergedData}
               margin={{ top: 20, right: 30, left: 10, bottom: 52 }}
             >
@@ -328,8 +325,8 @@ export default function CurveChart({ groups }: CurveChartProps) {
                 ))
               )}
 
-              {/* 原始数据点：用 Line + dot 替代 Scatter，避免 removeChild 崩溃 */}
-              {groups.map((g, gi) => (
+              {/* 原始数据点 */}
+              {groups.map((_, gi) => (
                 <Line
                   key={`raw-${gi}`}
                   dataKey={`r${gi}`}
