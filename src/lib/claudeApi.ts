@@ -1,6 +1,6 @@
 import type { CurveAnalysis } from "./curveFitting"
 
-const API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY as string
+const API_KEY = "sk-87986c27a9aa4b46ac4638fc1f96efeb"
 
 const SYSTEM_PROMPT =
   "你是一位材料科学、物理化学和热分析领域的专家教授，擅长分析步冷曲线实验数据并给出实验改进建议。"
